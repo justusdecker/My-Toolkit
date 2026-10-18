@@ -125,6 +125,19 @@ def log(
     .. p_logtype:: The mode: debug, warning or critical? For more information visit the `LogTypes`-Class
     .. p_date_crop:: Which way do you want to display the time? Look into the `LogDateCrop`-Class for more information
     .. p_use_icons:: True Icons like (🟡) will displayes instead of the text `"WAR"`
+    
+    How to use
+    ***
+    ```python
+    from Log import log, LogTypes, LogDateCrop
+    log('ABC $ $ $ $',
+        [0.2,None, 2],
+        LogTypes.info,
+        LogDateCrop.fulldate,
+        True # This enables the icon use
+        )
+    ```
+    
     """
     l_log_icon = LogTypeIcons[p_logtype.name]
     l_logtype_cropped: LiteralString = p_logtype.name.upper()[:3]
