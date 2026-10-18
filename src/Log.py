@@ -1,13 +1,12 @@
 from enum import Enum
 from typing import Any, LiteralString
-type Color = tuple[int, int, int]
+from datetime import datetime
 
+GC_COPYRIGHT = '© 2025 - 2026 Justus Decker - PrettyLogger'
+GC_GITHUB_URL = 'https://github.com/justusdecker/My-Toolkit'
+GC_VERSION = 1, 0, 0
 """
-* Add Icons
-* Add Emojis
-* Add Padding
-* Add Log Time
-* Colorize NULL
+* Add Depth coloring for lists, dicts and tuples - qol
 """
 
 class Color:
@@ -18,7 +17,7 @@ class Color:
         self.r, self.g, self.b = Color.convert_hex_to_rgb(p_hex)
 
     @staticmethod
-    def convert_hex_to_rgb(p_hex: str) -> Color:
+    def convert_hex_to_rgb(p_hex: str) -> tuple[int, int, int]:
         """
         Does what the function-title sais and return a `tuple[int, int, int]` <- Color
         """
@@ -27,6 +26,13 @@ class Color:
         return int(p_hex[0:2], base = 16), int(p_hex[2:4], base = 16), int(p_hex[4:6], base = 16)
     
 class LogTypes(Enum):
+    """
+    debug = 0
+    info = 1
+    warning = 2
+    error = 3
+    critical = 4
+    """
     debug = 0
     info = 1
     warning = 2
@@ -38,7 +44,14 @@ class LogTypeColors(Enum):
     info = '\033[32;1;1m'
     warning = '\033[33;1;1m'
     error = '\033[31;1;1m'
-    critical = '\033[31;1;1m\033[41;1;1m'
+    critical = '\033[31;1;1m\033[3m'
+
+class LogTypeIcons(Enum):
+    debug = '🔵'
+    info = '🟢'
+    warning = '🟡'
+    error = '🔴'
+    critical = '💥'
     
 class LogVariableColorTypes(Enum):
     integer = 'int'
@@ -62,19 +75,17 @@ class LogVariableColors(Enum):
     bytesequence = Color('#FFCC00')
     none = Color("#3D5585")
 
-class LogAttributes:
-    class PaddingAttributes:
-        pady: ...
-
-    class AlignAttributes:
-        ...
-    class Colors(Enum): #! outsource later for a bigger color table can be useful sometimes
-        ...
-    class Icons: #! outsource later for a bigger icon table can be useful sometimes
-        ...
-    class Emojis: #! outsource later for a bigger emoji table can be useful sometimes
-        ...
-
+class LogDateCrop(Enum):
+    """
+    nodate = 0
+    fulldate = 1
+    onlytime = 2
+    onlydate = 3
+    """
+    nodate = 0
+    fulldate = 1
+    onlytime = 2
+    onlydate = 3
 
 def get_colorized_text(p_color: str, p_text: str) -> str:
     """
@@ -87,13 +98,35 @@ def get_colorized_text(p_color: str, p_text: str) -> str:
     l_color = Color(p_color)
     return f'\033[38;2;{l_color.r};{l_color.g};{l_color.b}m{p_text}\033[0m'
 
+def get_colorized_background(p_color: str, p_text: str) -> str:
+    """
+    Uses Escape-Sequences to colorize the terminal background.
+    
+    No printing is happening here!
+    
+    🦄Taste the rainbow🌈
+    """
+    l_color = Color(p_color)
+    return f'\033[48;2;{l_color.r};{l_color.g};{l_color.b}m{p_text}\033[0m'
+
 def log(
     p_message: str, 
     p_variables: list[Any] | None = None, 
-    p_logtype: LogTypes = LogTypes.debug):
+    p_logtype: LogTypes = LogTypes.debug,
+    p_date_crop: LogDateCrop = LogDateCrop.onlytime,
+    p_use_icons = False):
     """
     The pretty way to log your things
+    
+    Each $ will be replaced by the given variables, if nothing is there or the variable list is too short it will output a NULL in RED
+    
+    .. p_message:: The string message you want to print e.g. `"ABC $ $ $ $"`
+    .. p_variables:: The variables you want to highlight e.g. `[0.2,None, 2]`
+    .. p_logtype:: The mode: debug, warning or critical? For more information visit the `LogTypes`-Class
+    .. p_date_crop:: Which way do you want to display the time? Look into the `LogDateCrop`-Class for more information
+    .. p_use_icons:: True Icons like (🟡) will displayes instead of the text `"WAR"`
     """
+    l_log_icon = LogTypeIcons[p_logtype.name]
     l_logtype_cropped: LiteralString = p_logtype.name.upper()[:3]
     l_logcolor: LogTypeColors = LogTypeColors[p_logtype.name].value
     l_combined_message_content = ''
@@ -121,15 +154,24 @@ def log(
                 t_word = string_convert_to_color_if_possible(t_variable_color)
                 l_variable_counter += 1
             elif l_variable_counter > len(p_variables) - 1 and char == '$':
-                t_word = '[NULL]'
+                t_word = get_colorized_background('#FF0000', 'NULL')
             l_combined_message_content += t_word
                 
     else:
         l_combined_message_content = p_message
-        
-    print(f'[{l_logcolor}{l_logtype_cropped}\033[0m] {l_combined_message_content}\033[0m')
     
-for i in range(5):
-    log('Hello World', p_logtype=LogTypes(i))
+    l_datetime_format = '%d/%m/%Y %H:%M:%S'
+    
+    if p_date_crop == LogDateCrop.nodate:
+        l_datetime_format = ''
+    elif p_date_crop == LogDateCrop.onlydate:
+        l_datetime_format = l_datetime_format.split(' ')[0]
+    elif p_date_crop == LogDateCrop.onlytime: # 🦆
+        l_datetime_format = l_datetime_format.split(' ')[1]
+    l_datetime_format = (' ' if l_datetime_format else '') + l_datetime_format
+        
+    print(f'[{l_logcolor}{l_log_icon.value if p_use_icons else l_logtype_cropped}{datetime.now().strftime(l_datetime_format)}\033[0m] {l_combined_message_content}\033[0m')
 
-log('ABC $ $ $ $ $ $ $ $ $ $ $ $ $', [0.2,None, 2, [123], (32, 3), "Hello", {'key': "test"}, b'10101', True])
+
+
+log('Startup Version: $ $ For more information visit: $', [GC_VERSION, GC_COPYRIGHT, GC_GITHUB_URL],LogTypes.info)
