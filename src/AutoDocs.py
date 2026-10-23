@@ -3,6 +3,11 @@ from enum import Enum
 from Log import log, LogTypes
 from pathlib import Path
 
+"""
+* Eine neue Anzeige für fehlende Dokumentation, am besten im terminal
+* entferne with und nutze den FileManager
+"""
+
 GC_TEMP_FOLDER = Path('./temp')
 GC_DOCUMENTATION_FOLDER = Path('./docs')
 GC_DOCUMENTATION_HEADER = "# Automatic-Documentator by Justus Decker\n\n"
@@ -33,7 +38,62 @@ def get_python_paths() -> list[str]:
                 l_return.append(p)
     return l_return
 
-def generate_docs(p_skip_contains: list[str], p_paths: list[str] = get_python_paths()):
+def print_documentationprogess_line(
+    p_lineno: int,
+    p_path: str,
+    p_ast_name: str,
+    p_statustype: str,
+    p_currentelement_name: str,
+):
+    l_path = p_path
+    l_ast_name = p_ast_name
+    LC_PATH_LENGTH = 40
+    LC_ASTNAME_LENGTH = 40
+    if p_path.__len__() > LC_PATH_LENGTH:
+        l_path = '...' + l_path[3:LC_PATH_LENGTH]
+    
+    if p_ast_name.__len__() > LC_ASTNAME_LENGTH:
+        l_ast_name = l_ast_name[:LC_ASTNAME_LENGTH - 3] + '...'
+    if p_lineno >= 1_000_000: raise Exception('p_lineno > 1E6 - not implemented')
+    l_current_element_short_name = ' '
+    match p_currentelement_name:
+        case 'function':
+            l_current_element_short_name = 'F'
+        case 'class':
+            l_current_element_short_name = 'C'
+        case _:
+            l_current_element_short_name = '!'
+            
+    match p_statustype:
+        case StatusTypes.okdoc.value:
+            l_statustype = '\033[32mG\033[0m'
+        case StatusTypes.tooshortdoc.value:
+            l_statustype = '\033[33mS\033[0m'
+        case StatusTypes.nodoc.value:
+            l_statustype = '\033[31mB\033[0m'
+        case _:
+            l_statustype = '\033[35mN\033[0m'
+    l_lineno = str(p_lineno)
+    max_char_length_map = []
+
+    p_line = f"""
+│{l_lineno:<6}│{l_statustype}│{l_current_element_short_name}│{l_ast_name:<40}│{l_path:<40}│
+"""[1:-1]
+    print(p_line)
+    
+def print_documentationprogress_header():
+    l_line01 = '┌──────┬─┬─┬────────────────────────────────────────┬────────────────────────────────────────┐'
+    l_line02 = '│lineno│S│O│                  Name                  │                  Path                  │'
+    l_line03 = '├──────┼─┼─┼────────────────────────────────────────┼────────────────────────────────────────┤'
+    print(l_line01)
+    print(l_line02)
+    print(l_line03)
+    
+def print_documentationprogress_footer():
+    l_line = '└──────┴─┴─┴────────────────────────────────────────┴────────────────────────────────────────┘'
+    print(l_line)
+
+def generate_docs(p_skip_contains: list[str], p_paths: list[str] = get_python_paths(), p_only_bads: bool = True):
     """
     Creates automatically a README for the coder, you lazy butt :D
     """
@@ -44,6 +104,8 @@ def generate_docs(p_skip_contains: list[str], p_paths: list[str] = get_python_pa
         tooshortdocumentation = 0
         documentation_string = GC_DOCUMENTATION_HEADER
         status_string = GC_DOCUMENTATION_STATUS_HEADER
+        progress_to_print_later = []
+        page_entrys = 30
     
     def get_ast_tree(p_path: str):
         with open(p_path, 'rb') as file:
@@ -78,7 +140,12 @@ def generate_docs(p_skip_contains: list[str], p_paths: list[str] = get_python_pa
                 t_current_element_name = 'function'
                 if t_function_documentation is None:
                     DocumentationState.nodocumentation += 1
-                    add_status_markdown_line(p_path, t_ast.name, StatusTypes.nodoc.value, t_current_element_name)
+                    DocumentationState.progress_to_print_later.append([
+                        t_ast.lineno,
+                        p_path, 
+                        t_ast.name, 
+                        StatusTypes.nodoc.value, 
+                        t_current_element_name])
                     log(
                         "$ : $ $ -> $",
                         [str(StatusTypes.nodoc.value), t_current_element_name, p_path, t_ast.name]
@@ -86,14 +153,24 @@ def generate_docs(p_skip_contains: list[str], p_paths: list[str] = get_python_pa
                     continue
                 if len(t_function_documentation) <= 30:
                     DocumentationState.tooshortdocumentation += 1
-                    add_status_markdown_line(p_path, t_ast.name, StatusTypes.tooshortdoc.value, t_current_element_name)
+                    DocumentationState.progress_to_print_later.append([
+                        t_ast.lineno,
+                        p_path, 
+                        t_ast.name, 
+                        StatusTypes.tooshortdoc.value, 
+                        t_current_element_name])
                     log(
                         "$ : $ $ -> $",
                         [str(StatusTypes.tooshortdoc.value), t_current_element_name, p_path, t_ast.name]
                     )
                 else:
                     DocumentationState.hasdocumentation += 1
-                    add_status_markdown_line(p_path, t_ast.name, StatusTypes.tooshortdoc.value, t_current_element_name)
+                    DocumentationState.progress_to_print_later.append([
+                        t_ast.lineno,
+                        p_path, 
+                        t_ast.name, 
+                        StatusTypes.okdoc.value, 
+                        t_current_element_name])
                     log(
                         "$ : $ $ -> $",
                         [str(StatusTypes.okdoc.value), t_current_element_name, p_path, t_ast.name]
@@ -106,7 +183,12 @@ def generate_docs(p_skip_contains: list[str], p_paths: list[str] = get_python_pa
                 t_current_element_name = 'class'
                 if t_class_documentation is None:
                     DocumentationState.nodocumentation += 1
-                    add_status_markdown_line(p_path, t_ast.name, StatusTypes.nodoc.value, t_current_element_name)
+                    DocumentationState.progress_to_print_later.append([
+                        t_ast.lineno,
+                        p_path, 
+                        t_ast.name, 
+                        StatusTypes.nodoc.value, 
+                        t_current_element_name])
                     log(
                         "$ : $ $ -> $",
                         [str(StatusTypes.nodoc.value), t_current_element_name, p_path, t_ast.name]
@@ -114,14 +196,24 @@ def generate_docs(p_skip_contains: list[str], p_paths: list[str] = get_python_pa
                     continue
                 if len(t_class_documentation) <= 30:
                     DocumentationState.tooshortdocumentation += 1
-                    add_status_markdown_line(p_path, t_ast.name, StatusTypes.tooshortdoc.value, t_current_element_name)
+                    DocumentationState.progress_to_print_later.append([
+                        t_ast.lineno,
+                        p_path, 
+                        t_ast.name, 
+                        StatusTypes.tooshortdoc.value, 
+                        t_current_element_name])
                     log(
                         "$ : $ $ -> $",
                         [str(StatusTypes.tooshortdoc.value), t_current_element_name, p_path, t_ast.name]
                     )
                 else:
                     DocumentationState.hasdocumentation += 1
-                    add_status_markdown_line(p_path, t_ast.name, StatusTypes.okdoc.value, t_current_element_name)
+                    DocumentationState.progress_to_print_later.append([
+                        t_ast.lineno,
+                        p_path, 
+                        t_ast.name, 
+                        StatusTypes.okdoc.value, 
+                        t_current_element_name])
                     log(
                         "$ : $ $ -> $",
                         [str(StatusTypes.okdoc.value), t_current_element_name, p_path, t_ast.name]
@@ -137,6 +229,17 @@ def generate_docs(p_skip_contains: list[str], p_paths: list[str] = get_python_pa
             get_file_docstring(t_tree)
         )
         get_documentation_from_file(t_path, t_tree)
+    print_documentationprogress_header()
+    t_ptpl_length = DocumentationState.progress_to_print_later.__len__()
+    t_index_without_okay = 0
+    for t_index, t_progress in enumerate(DocumentationState.progress_to_print_later):
+        if p_only_bads and t_progress[3] == StatusTypes.okdoc.value: continue
+        else: t_index_without_okay += 1
+        print_documentationprogess_line(*t_progress)
+
+        if t_index_without_okay % DocumentationState.page_entrys == 0 and t_index != 0:
+            input(f'Next Page ({t_index // DocumentationState.page_entrys} / {t_ptpl_length // DocumentationState.page_entrys}) ->')
+    print_documentationprogress_footer()
     log(
         "$% $ of $",
         [float(f'{(1 - (DocumentationState.nodocumentation / DocumentationState.docsum)) * 100:.2f}'),
@@ -156,10 +259,12 @@ def generate_docs(p_skip_contains: list[str], p_paths: list[str] = get_python_pa
             LogTypes.warning
         )
         os.mkdir(GC_DOCUMENTATION_FOLDER)
-    with open('./docs/auto-docs.md', 'wb') as file:
-        file.write(DocumentationState.documentation_string.encode())
-    with open('./docs/docs-progress.md','wb') as file:
-        file.write(DocumentationState.status_string.encode())
+    from FileManager import overwrite_file
+    overwrite_file('./docs/auto-docs.md', DocumentationState.documentation_string.encode())
+    overwrite_file('./docs/docs-progress.md', DocumentationState.status_string.encode())
+
+
+
 if __name__ == '__main__':
     generate_docs(
         [
